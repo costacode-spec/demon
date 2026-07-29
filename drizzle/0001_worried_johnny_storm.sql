@@ -1,0 +1,1 @@
+ALTER TABLE "scans" ADD COLUMN "profile" text DEFAULT 'standard' NOT NULL;

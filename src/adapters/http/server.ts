@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import { DEFAULT_SCAN_PROFILE, SCAN_PROFILES, type ScanProfile } from "../../domain/entities";
 import type { ScanService } from "../../domain/scan-service";
 
 // Delivery adapter: translates HTTP <-> the ScanService. No DB, no queue here.
@@ -6,10 +7,18 @@ export function buildServer(scanService: ScanService): FastifyInstance {
   const app = Fastify({ logger: false });
 
   app.post("/scans", async (req, reply) => {
-    const target = (req.body as { target?: string } | undefined)?.target?.trim();
+    const body = req.body as { target?: string; profile?: string } | undefined;
+    const target = body?.target?.trim();
     if (!target) return reply.code(400).send({ error: "target is required" });
-    const id = await scanService.requestScan(target);
-    return reply.code(202).send({ id, status: "queued" });
+
+    const raw = body?.profile ?? DEFAULT_SCAN_PROFILE;
+    if (!SCAN_PROFILES.includes(raw as ScanProfile)) {
+      return reply.code(400).send({ error: `invalid profile; valid: ${SCAN_PROFILES.join(", ")}` });
+    }
+    const profile = raw as ScanProfile;
+
+    const id = await scanService.requestScan(target, profile);
+    return reply.code(202).send({ id, status: "queued", profile });
   });
 
   app.get("/scans", async () => scanService.listScans());

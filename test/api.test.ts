@@ -49,8 +49,10 @@ after(async () => {
   if (handle) await handle.pool.end();
 });
 
-async function submit(target = "http://localhost") {
-  const res = await app.inject({ method: "POST", url: "/scans", payload: { target } });
+async function submit(target = "http://localhost", profile?: string) {
+  const payload: Record<string, unknown> = { target };
+  if (profile !== undefined) payload.profile = profile;
+  const res = await app.inject({ method: "POST", url: "/scans", payload });
   assert.equal(res.statusCode, 202);
   return res.json().id as number;
 }
@@ -78,6 +80,34 @@ it("scan failure is recorded, not lost", async () => {
   const body = await waitTerminal(await submit());
   assert.equal(body.status, "failed");
   assert.equal(body.failureReason, "boom");
+});
+
+it("defaults to the standard profile and passes it to the scanner", async () => {
+  const fake = new FakeScanner();
+  scanner.current = fake;
+  const body = await waitTerminal(await submit());
+  assert.equal(body.profile, "standard");
+  assert.equal(fake.lastProfile, "standard");
+});
+
+it("records and returns an explicit profile", async () => {
+  const fake = new FakeScanner();
+  scanner.current = fake;
+  const body = await waitTerminal(await submit("http://localhost", "quick"));
+  assert.equal(body.profile, "quick");
+  assert.equal(fake.lastProfile, "quick");
+});
+
+it("rejects an unknown profile with 400 and creates no scan", async () => {
+  const before = (await app.inject({ method: "GET", url: "/scans" })).json().length;
+  const res = await app.inject({
+    method: "POST",
+    url: "/scans",
+    payload: { target: "http://localhost", profile: "aggressive" },
+  });
+  assert.equal(res.statusCode, 400);
+  const after = (await app.inject({ method: "GET", url: "/scans" })).json().length;
+  assert.equal(after, before);
 });
 
 it("missing target is rejected", async () => {

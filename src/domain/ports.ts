@@ -4,6 +4,7 @@ import type {
   FindingView,
   RawFinding,
   ScanJob,
+  ScanProfile,
   ScanStatus,
   ScanSummary,
   ScanView,
@@ -16,7 +17,7 @@ export interface TargetRepository {
 }
 
 export interface ScanRepository {
-  create(targetId: number): Promise<{ id: number }>;
+  create(targetId: number, profile: ScanProfile): Promise<{ id: number }>;
   setStatus(id: number, status: ScanStatus, failureReason?: string | null): Promise<void>;
   findView(id: number): Promise<ScanView | null>;
   listSummaries(): Promise<ScanSummary[]>;
@@ -34,5 +35,6 @@ export interface ScanQueue {
 
 export interface VulnerabilityScanner {
   // The seam the Rust worker will reimplement later, behind this same contract.
-  scan(targetSpec: string): Promise<RawFinding[]>;
+  // The profile is a domain concept; the adapter maps it to its own tool flags.
+  scan(targetSpec: string, profile: ScanProfile): Promise<RawFinding[]>;
 }

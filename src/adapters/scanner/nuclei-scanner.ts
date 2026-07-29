@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import { writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RawFinding } from "../../domain/entities";
+import type { RawFinding, ScanProfile } from "../../domain/entities";
 import type { VulnerabilityScanner } from "../../domain/ports";
 
 const exec = promisify(execFile);
@@ -13,6 +13,15 @@ const exec = promisify(execFile);
 const PORT_SCHEME: Record<number, string> = {
   80: "http", 8080: "http", 8000: "http", 3000: "http",
   443: "https", 8443: "https",
+};
+
+// The Scan Profile -> nuclei flags mapping. This is the only place that knows
+// nuclei's CLI; the domain only knows the profile names. quick = tech-detection
+// templates, standard = medium+ severity, full = the whole set.
+const PROFILE_FLAGS: Record<ScanProfile, string[]> = {
+  quick: ["-tags", "tech"],
+  standard: ["-severity", "medium,high,critical"],
+  full: [],
 };
 
 // Orchestrates nmap (discovery) + nuclei (detection). The concrete adapter
@@ -33,12 +42,12 @@ export class NucleiScanner implements VulnerabilityScanner {
     }
   }
 
-  async scan(targetSpec: string): Promise<RawFinding[]> {
+  async scan(targetSpec: string, profile: ScanProfile): Promise<RawFinding[]> {
     const host = this.hostOf(targetSpec);
     const ports = await this.discoverHttpPorts(host);
     if (ports.length === 0) return [];
     const urls = ports.map((p) => `${p.scheme}://${host}:${p.port}`);
-    return this.runNuclei(urls);
+    return this.runNuclei(urls, profile);
   }
 
   private hostOf(targetSpec: string): string {
@@ -65,7 +74,7 @@ export class NucleiScanner implements VulnerabilityScanner {
     return open;
   }
 
-  private async runNuclei(urls: string[]): Promise<RawFinding[]> {
+  private async runNuclei(urls: string[], profile: ScanProfile): Promise<RawFinding[]> {
     const listPath = join(tmpdir(), `nuclei-${Date.now()}-${process.pid}.txt`);
     await writeFile(listPath, urls.join("\n"));
     // Optional extra flags (e.g. scope templates for a fast smoke test).
@@ -75,8 +84,11 @@ export class NucleiScanner implements VulnerabilityScanner {
     // -auth=false / -duc: never phone home (the PDCP cloud handshake hangs
     //   ~180s per scan when unreachable). This tool does not use the PD cloud.
     const base = ["-l", listPath, "-jsonl", "-silent", "-no-stdin", "-auth=false", "-duc"];
+    // Order: base safety flags -> profile scope -> env override (wins last, so
+    // the live smoke test can still force a single template regardless of profile).
+    const args = [...base, ...PROFILE_FLAGS[profile], ...extra];
     try {
-      const { stdout } = await exec("nuclei", [...base, ...extra], { maxBuffer: 64 * 1024 * 1024 });
+      const { stdout } = await exec("nuclei", args, { maxBuffer: 64 * 1024 * 1024 });
       return stdout
         .split("\n")
         .filter(Boolean)

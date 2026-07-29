@@ -1,4 +1,4 @@
-import type { RawFinding } from "../src/domain/entities";
+import type { RawFinding, ScanProfile } from "../src/domain/entities";
 import type { VulnerabilityScanner } from "../src/domain/ports";
 
 export const sampleFindings: RawFinding[] = [
@@ -7,15 +7,17 @@ export const sampleFindings: RawFinding[] = [
 ];
 
 export class FakeScanner implements VulnerabilityScanner {
+  lastProfile: ScanProfile | null = null;
   constructor(private readonly findings: RawFinding[] = sampleFindings) {}
-  async scan(): Promise<RawFinding[]> {
+  async scan(_targetSpec: string, profile: ScanProfile): Promise<RawFinding[]> {
+    this.lastProfile = profile;
     return this.findings;
   }
 }
 
 export class ThrowingScanner implements VulnerabilityScanner {
   constructor(private readonly message = "tool exploded") {}
-  async scan(): Promise<RawFinding[]> {
+  async scan(_targetSpec: string, _profile: ScanProfile): Promise<RawFinding[]> {
     throw new Error(this.message);
   }
 }
@@ -23,7 +25,7 @@ export class ThrowingScanner implements VulnerabilityScanner {
 // Lets a single registered worker swap scanner behaviour between tests.
 export class SwitchableScanner implements VulnerabilityScanner {
   current: VulnerabilityScanner = new FakeScanner();
-  scan(targetSpec: string): Promise<RawFinding[]> {
-    return this.current.scan(targetSpec);
+  scan(targetSpec: string, profile: ScanProfile): Promise<RawFinding[]> {
+    return this.current.scan(targetSpec, profile);
   }
 }

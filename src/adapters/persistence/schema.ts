@@ -14,6 +14,7 @@ export const scans = pgTable("scans", {
     .notNull()
     .references(() => targets.id),
   status: text("status").notNull().default("queued"),
+  profile: text("profile").notNull().default("standard"),
   failureReason: text("failure_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

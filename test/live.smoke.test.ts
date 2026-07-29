@@ -55,7 +55,12 @@ after(async () => {
 });
 
 it("real nmap+nuclei scan of a local target reaches success", async () => {
-  const id = (await app.inject({ method: "POST", url: "/scans", payload: { target } })).json().id;
+  // Use the 'full' profile: NUCLEI_EXTRA_ARGS forces a single info-severity
+  // template, which the 'standard' profile's severity filter would strip
+  // (leaving nuclei with no templates -> error). 'full' applies no filter.
+  const id = (
+    await app.inject({ method: "POST", url: "/scans", payload: { target, profile: "full" } })
+  ).json().id;
   const start = Date.now();
   let body: any;
   while (Date.now() - start < 60000) {

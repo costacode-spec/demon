@@ -1,5 +1,5 @@
 import { desc, eq } from "drizzle-orm";
-import type { ScanStatus, ScanSummary, ScanView } from "../../domain/entities";
+import type { ScanProfile, ScanStatus, ScanSummary, ScanView } from "../../domain/entities";
 import type { ScanRepository } from "../../domain/ports";
 import type { Database } from "./db";
 import { scans, targets } from "./schema";
@@ -7,8 +7,11 @@ import { scans, targets } from "./schema";
 export class DrizzleScanRepository implements ScanRepository {
   constructor(private readonly db: Database) {}
 
-  async create(targetId: number): Promise<{ id: number }> {
-    const [row] = await this.db.insert(scans).values({ targetId }).returning({ id: scans.id });
+  async create(targetId: number, profile: ScanProfile): Promise<{ id: number }> {
+    const [row] = await this.db
+      .insert(scans)
+      .values({ targetId, profile })
+      .returning({ id: scans.id });
     return { id: row.id };
   }
 
@@ -28,6 +31,7 @@ export class DrizzleScanRepository implements ScanRepository {
       .select({
         id: scans.id,
         status: scans.status,
+        profile: scans.profile,
         failureReason: scans.failureReason,
         target: targets.spec,
         createdAt: scans.createdAt,
@@ -36,7 +40,9 @@ export class DrizzleScanRepository implements ScanRepository {
       .from(scans)
       .innerJoin(targets, eq(targets.id, scans.targetId))
       .where(eq(scans.id, id));
-    return row ? { ...row, status: row.status as ScanStatus } : null;
+    return row
+      ? { ...row, status: row.status as ScanStatus, profile: row.profile as ScanProfile }
+      : null;
   }
 
   async listSummaries(): Promise<ScanSummary[]> {
@@ -44,12 +50,17 @@ export class DrizzleScanRepository implements ScanRepository {
       .select({
         id: scans.id,
         status: scans.status,
+        profile: scans.profile,
         target: targets.spec,
         createdAt: scans.createdAt,
       })
       .from(scans)
       .innerJoin(targets, eq(targets.id, scans.targetId))
       .orderBy(desc(scans.id));
-    return rows.map((r) => ({ ...r, status: r.status as ScanStatus }));
+    return rows.map((r) => ({
+      ...r,
+      status: r.status as ScanStatus,
+      profile: r.profile as ScanProfile,
+    }));
   }
 }

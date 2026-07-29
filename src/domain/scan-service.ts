@@ -1,4 +1,4 @@
-import type { FindingView, ScanJob, ScanSummary, ScanView } from "./entities";
+import type { FindingView, ScanJob, ScanProfile, ScanSummary, ScanView } from "./entities";
 import type {
   FindingRepository,
   ScanQueue,
@@ -19,10 +19,11 @@ export class ScanService {
   ) {}
 
   // Trigger a scan: record the target, create a queued scan, enqueue the job.
-  async requestScan(targetSpec: string): Promise<number> {
+  // The profile is already resolved to a concrete value at the API boundary.
+  async requestScan(targetSpec: string, profile: ScanProfile): Promise<number> {
     const target = await this.targets.upsert(targetSpec);
-    const scan = await this.scans.create(target.id);
-    await this.queue.enqueue({ scanId: scan.id, targetSpec });
+    const scan = await this.scans.create(target.id, profile);
+    await this.queue.enqueue({ scanId: scan.id, targetSpec, profile });
     return scan.id;
   }
 
@@ -31,7 +32,7 @@ export class ScanService {
   async processScan(job: ScanJob): Promise<void> {
     await this.scans.setStatus(job.scanId, "running");
     try {
-      const found = await this.scanner.scan(job.targetSpec);
+      const found = await this.scanner.scan(job.targetSpec, job.profile);
       await this.findings.addMany(job.scanId, found);
       await this.scans.setStatus(job.scanId, "succeeded");
     } catch (e) {
