@@ -119,3 +119,4 @@ docker-compose down          # add -v to also wipe the database volume
 | Every scan hangs far longer than 3 min | nuclei phoning home / reading stdin. The scanner already passes `-no-stdin -auth=false -duc`; if you edited it, put them back (see `src/adapters/scanner/nuclei-scanner.ts`). |
 | `relation "targets" does not exist` | Migrations didn't run. They apply automatically on `npm run dev`/tests; for a clean slate `docker-compose down -v && docker-compose up -d`. |
 | `docker` command not found | colima not started: `colima start`. |
+| `npm test` flaky — a scan test times out | A dev server (`npm run dev`) is running against the same Postgres; its pg-boss worker competes for the test's jobs and runs the real scanner. Stop the dev server before testing (or point tests at a separate `DATABASE_URL`). |

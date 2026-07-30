@@ -1,3 +1,7 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance } from "fastify";
 import { DEFAULT_SCAN_PROFILE, SCAN_PROFILES, type ScanProfile } from "../../domain/entities";
 import type { ScanService } from "../../domain/scan-service";
@@ -30,41 +34,23 @@ export function buildServer(scanService: ScanService): FastifyInstance {
     return scan;
   });
 
-  app.get("/", async (_req, reply) => reply.type("text/html").send(PAGE));
+  // Serve the built React app in production. Resolve relative to this file, not
+  // the launch directory, so it works regardless of the process's cwd.
+  // In dev the Vite server serves the UI and proxies API calls here, so the
+  // build won't exist — fall back to a hint instead of a bare 404.
+  const distDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "web", "dist");
+  if (existsSync(distDir)) {
+    app.register(fastifyStatic, { root: distDir });
+  } else {
+    app.get("/", async (_req, reply) =>
+      reply
+        .type("text/plain")
+        .send(
+          "UI not built. Dev: `cd web && npm run dev` (Vite proxies the API). " +
+            "Single process: `cd web && npm run build`, then restart.",
+        ),
+    );
+  }
 
   return app;
 }
-
-const PAGE = `<!doctype html>
-<html><head><meta charset="utf-8"><title>demon scanner</title>
-<style>body{font-family:system-ui;margin:2rem;max-width:720px}li{cursor:pointer;padding:2px 0}pre{background:#f4f4f4;padding:1rem;overflow:auto}</style>
-</head><body>
-<h1>Scans</h1>
-<form id="f"><input id="t" placeholder="http://localhost" size="40"><button>Scan</button></form>
-<ul id="list"></ul>
-<div id="detail"></div>
-<script>
-async function load(){
-  var scans = await (await fetch('/scans')).json();
-  document.getElementById('list').innerHTML = scans.map(function(s){
-    return '<li data-id="'+s.id+'">#'+s.id+' ['+s.status+'] '+s.target+'</li>';
-  }).join('');
-}
-async function show(id){
-  var s = await (await fetch('/scans/'+id)).json();
-  document.getElementById('detail').innerHTML =
-    '<h2>Scan #'+s.id+' &mdash; '+s.status+'</h2>'+
-    (s.failureReason ? '<p>failure: '+s.failureReason+'</p>' : '')+
-    '<pre>'+JSON.stringify(s.findings,null,2)+'</pre>';
-}
-document.getElementById('list').addEventListener('click',function(e){
-  var id = e.target.getAttribute('data-id'); if(id) show(id);
-});
-document.getElementById('f').addEventListener('submit',async function(e){
-  e.preventDefault();
-  await fetch('/scans',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({target:document.getElementById('t').value})});
-  document.getElementById('t').value=''; setTimeout(load,300);
-});
-load(); setInterval(load,2000);
-</script>
-</body></html>`;

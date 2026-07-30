@@ -1,8 +1,16 @@
-import { desc, eq } from "drizzle-orm";
-import type { ScanProfile, ScanStatus, ScanSummary, ScanView } from "../../domain/entities";
+import { desc, eq, sql, type SQL } from "drizzle-orm";
+import { SEVERITY_LEVELS } from "../../domain/entities";
+import type {
+  ScanProfile,
+  ScanStatus,
+  ScanSummary,
+  ScanView,
+  SeverityCounts,
+  SeverityLevel,
+} from "../../domain/entities";
 import type { ScanRepository } from "../../domain/ports";
 import type { Database } from "./db";
-import { scans, targets } from "./schema";
+import { findings, scans, targets } from "./schema";
 
 export class DrizzleScanRepository implements ScanRepository {
   constructor(private readonly db: Database) {}
@@ -46,6 +54,16 @@ export class DrizzleScanRepository implements ScanRepository {
   }
 
   async listSummaries(): Promise<ScanSummary[]> {
+    // Severity rollup in one query: LEFT JOIN findings and count per level with
+    // conditional aggregation, so a scan with no findings still returns zeros.
+    // Columns are derived from SEVERITY_LEVELS so the set lives in one place.
+    const severityColumns = Object.fromEntries(
+      SEVERITY_LEVELS.map((level) => [
+        level,
+        sql<number>`count(*) filter (where ${findings.severity} = ${level})`.mapWith(Number),
+      ]),
+    ) as Record<SeverityLevel, SQL<number>>;
+
     const rows = await this.db
       .select({
         id: scans.id,
@@ -53,14 +71,23 @@ export class DrizzleScanRepository implements ScanRepository {
         profile: scans.profile,
         target: targets.spec,
         createdAt: scans.createdAt,
+        ...severityColumns,
       })
       .from(scans)
       .innerJoin(targets, eq(targets.id, scans.targetId))
+      .leftJoin(findings, eq(findings.scanId, scans.id))
+      .groupBy(scans.id, targets.spec)
       .orderBy(desc(scans.id));
+
     return rows.map((r) => ({
-      ...r,
+      id: r.id,
       status: r.status as ScanStatus,
       profile: r.profile as ScanProfile,
+      target: r.target,
+      createdAt: r.createdAt,
+      severityCounts: Object.fromEntries(
+        SEVERITY_LEVELS.map((level) => [level, r[level]]),
+      ) as SeverityCounts,
     }));
   }
 }

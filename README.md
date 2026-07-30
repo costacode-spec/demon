@@ -15,9 +15,11 @@ src/
     persistence/  Drizzle repositories + schema     (ORM lives only here)
     queue/        pg-boss                            (ScanQueue port)
     scanner/      nmap + nuclei                      (VulnerabilityScanner port)
-    http/         fastify routes                     → ScanService
+    http/         fastify routes + serves web/dist   → ScanService
     worker/       pg-boss consumer                   → ScanService.processScan
   main.ts     composition root — wires adapters into the domain
+web/          Vite + React frontend (its own package); built to web/dist,
+              served by Fastify in prod, Vite dev server proxies the API in dev
 ```
 
 Rule: `domain/` never imports from `adapters/`. Schema changes → edit
@@ -39,7 +41,22 @@ npm install
 npm run dev                   # API + worker on :3000
 ```
 
-Open http://localhost:3000, submit a target you own, watch findings appear.
+**Frontend.** In development, run the Vite dev server alongside the API (it
+proxies `/scans` to :3000, with hot reload):
+
+```sh
+cd web && npm install && npm run dev   # UI on :5173
+```
+
+For a production-style single process, build the UI and let the API serve it:
+
+```sh
+cd web && npm run build       # -> web/dist
+npm run dev                   # http://localhost:3000 now serves the built UI
+```
+
+Open the UI, pick a Scan Profile (quick/standard/full), submit a target you own,
+and watch scans appear with a per-severity rollup.
 
 Or by API:
 

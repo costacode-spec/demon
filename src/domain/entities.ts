@@ -29,11 +29,20 @@ export interface FindingView {
   matchedAt: string | null;
 }
 
+// The severity levels we roll up (nuclei's own lowercase names). Single source
+// of truth for the counts shape and the columns the repository aggregates.
+export const SEVERITY_LEVELS = ["critical", "high", "medium", "low", "info"] as const;
+export type SeverityLevel = (typeof SEVERITY_LEVELS)[number];
+
+// A rollup of a scan's findings by severity (the "severity summary").
+export type SeverityCounts = Record<SeverityLevel, number>;
+
 export interface ScanSummary {
   id: number;
   status: ScanStatus;
   profile: ScanProfile;
   target: string;
+  severityCounts: SeverityCounts;
   createdAt: Date;
 }
 

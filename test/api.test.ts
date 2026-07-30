@@ -1,5 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { sql } from "drizzle-orm";
 import PgBoss from "pg-boss";
 import type { FastifyInstance } from "fastify";
 import { buildServer } from "../src/adapters/http/server";
@@ -29,6 +30,11 @@ before(async () => {
   boss = new PgBoss({ connectionString: url, pollingIntervalSeconds: 1 });
   await boss.start();
   await boss.createQueue(SCAN_QUEUE);
+
+  // Test isolation: clear any jobs/rows left by earlier runs so the single
+  // worker isn't starved by a stale backlog.
+  await handle.db.execute(sql`delete from pgboss.job where name = ${SCAN_QUEUE}`);
+  await handle.db.execute(sql`truncate table findings, scans, targets restart identity cascade`);
 
   const queue = new PgBossScanQueue(boss);
   const service = new ScanService(
@@ -108,6 +114,30 @@ it("rejects an unknown profile with 400 and creates no scan", async () => {
   assert.equal(res.statusCode, 400);
   const after = (await app.inject({ method: "GET", url: "/scans" })).json().length;
   assert.equal(after, before);
+});
+
+it("reports a severity rollup on the scan list", async () => {
+  scanner.current = new FakeScanner([
+    { templateId: "a", severity: "critical", matchedAt: null },
+    { templateId: "b", severity: "high", matchedAt: null },
+    { templateId: "c", severity: "high", matchedAt: null },
+    { templateId: "d", severity: "medium", matchedAt: null },
+    { templateId: "e", severity: null, matchedAt: null }, // not counted in any bucket
+  ]);
+  const id = await submit();
+  await waitTerminal(id);
+  const list = (await app.inject({ method: "GET", url: "/scans" })).json();
+  const row = list.find((s: { id: number }) => s.id === id);
+  assert.deepEqual(row.severityCounts, { critical: 1, high: 2, medium: 1, low: 0, info: 0 });
+});
+
+it("returns zero severity counts for a scan with no findings", async () => {
+  scanner.current = new FakeScanner([]);
+  const id = await submit();
+  await waitTerminal(id);
+  const list = (await app.inject({ method: "GET", url: "/scans" })).json();
+  const row = list.find((s: { id: number }) => s.id === id);
+  assert.deepEqual(row.severityCounts, { critical: 0, high: 0, medium: 0, low: 0, info: 0 });
 });
 
 it("missing target is rejected", async () => {
