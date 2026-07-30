@@ -39,6 +39,28 @@ add to it when a new concept earns a name, don't front-load it.
   for discovery, nuclei for vulnerability templates. The system **orchestrates**
   existing tools; it does not reinvent detection logic.
 
+## Product-level terms (design-stage — see `docs/design/`)
+
+These come from the product design and are **not built yet**; they're recorded
+so the language is consistent when we implement them.
+
+- **Client** — a paying customer we scan *for* and deliver reports *to*. Owns
+  Targets, Scans, and Reports. (Distinct from the operator, who runs the tool.)
+
+- **Report** — the vetted deliverable produced from a Scan. Lifecycle:
+  `draft` (auto-generated) → `triaged` (operator reviewed findings) →
+  `published` (visible to the Client). The client only ever sees `published`.
+
+- **triageStatus** (on a Finding) — the operator's verdict during review:
+  `new | confirmed | false_positive | suppressed`. Only confirmed findings reach
+  a published Report.
+
+- **User / role** — `operator` (full control: scan, triage, publish) or
+  `client` (read-only, scoped to their own Client's published reports).
+
+- **Operator console** vs **Client portal** — the two surfaces: the operator's
+  working tool vs the client's read-only report view.
+
 ## Notes
 
 - Architecture and ORM decisions live in `docs/adr/`.
